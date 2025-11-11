@@ -1,0 +1,121 @@
+{
+  "app_settings": {
+    "check_interval": 5,
+    "auto_open_browser": false,
+    "browser_delay": 8,
+    "crash_log_enabled": true,
+    "frontend_url": "http://localhost:3000/"
+  },
+  "services": [
+    {
+      "name": "Example: Chrome Browser",
+      "type": "executable",
+      "enabled": false,
+      "auto_restart": true,
+      "workspace": "",
+      "command": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "args": [
+        "--new-window",
+        "http://localhost:3000"
+      ],
+      "startup_delay": 10,
+      "min_uptime_for_crash": 0,
+      "track_child_processes": true,
+      "use_unique_profile": true,
+      "profile_base_dir": "",
+      "health_check_url": null,
+      "environment": {},
+      "note": "track_child_processes=true monitors the actual browser process"
+    },
+    {
+      "name": "Example: Microsoft Edge",
+      "type": "executable",
+      "enabled": false,
+      "auto_restart": true,
+      "workspace": "",
+      "command": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+      "args": [
+        "--new-window",
+        "http://localhost:3000"
+      ],
+      "startup_delay": 10,
+      "min_uptime_for_crash": 0,
+      "track_child_processes": true,
+      "use_unique_profile": true,
+      "profile_base_dir": "",
+      "health_check_url": null,
+      "environment": {},
+      "note": "track_child_processes=true allows monitoring even after launcher exits"
+    },
+    {
+      "name": "Example: VS Code",
+      "type": "executable",
+      "enabled": false,
+      "auto_restart": true,
+      "workspace": "",
+      "command": "C:\\Users\\YourUsername\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+      "args": [
+        "C:\\path\\to\\your\\project"
+      ],
+      "startup_delay": 0,
+      "min_uptime_for_crash": 0,
+      "track_child_processes": true,
+      "use_unique_profile": true,
+      "profile_base_dir": "",
+      "health_check_url": null,
+      "environment": {},
+      "note": "track_child_processes=true monitors the actual editor window"
+    },
+    {
+      "name": "Example: NPM Development Server",
+      "type": "npm_script",
+      "enabled": false,
+      "auto_restart": true,
+      "workspace": "C:\\path\\to\\your\\frontend\\project",
+      "command": "pnpm dev --host",
+      "args": [],
+      "startup_delay": 0,
+      "min_uptime_for_crash": 10,
+      "use_unique_profile": false,
+      "profile_base_dir": "",
+      "health_check_url": null,
+      "environment": {
+        "NODE_ENV": "development"
+      }
+    },
+    {
+      "name": "Example: PowerShell Script",
+      "type": "powershell_script",
+      "enabled": false,
+      "auto_restart": true,
+      "workspace": "C:\\path\\to\\script\\directory",
+      "command": "C:\\path\\to\\your\\script.ps1",
+      "args": [],
+      "startup_delay": 2,
+      "min_uptime_for_crash": 10,
+      "use_unique_profile": false,
+      "profile_base_dir": "",
+      "health_check_url": null,
+      "environment": {}
+    },
+    {
+      "name": "Example: Executable Application",
+      "type": "executable",
+      "enabled": false,
+      "auto_restart": true,
+      "workspace": "",
+      "command": "C:\\path\\to\\your\\application.exe",
+      "args": [
+        "--argument1",
+        "--argument2"
+      ],
+      "startup_delay": 5,
+      "min_uptime_for_crash": 10,
+      "use_unique_profile": false,
+      "profile_base_dir": "",
+      "health_check_url": null,
+      "environment": {}
+    }
+  ]
+}
+

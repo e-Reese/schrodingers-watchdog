@@ -5,6 +5,7 @@ from tkinter import ttk, filedialog, messagebox
 from typing import Optional, Dict, Any
 
 from ..service_definitions import ServiceStrategyFactory
+from .theme import COLORS
 
 
 class ServiceEditorDialog:
@@ -17,6 +18,7 @@ class ServiceEditorDialog:
         self.dialog.geometry("650x600")
         self.dialog.transient(parent)
         self.dialog.grab_set()
+        self.dialog.configure(bg=COLORS["background"])
         
         self.service_config = service_config or {}
         self.is_new = service_config is None
@@ -33,9 +35,14 @@ class ServiceEditorDialog:
     def _create_widgets(self):
         """Create dialog widgets"""
         # Main container with scrollbar
-        canvas = tk.Canvas(self.dialog)
+        canvas = tk.Canvas(
+            self.dialog,
+            bg=COLORS["surface"],
+            highlightthickness=0,
+            borderwidth=0
+        )
         scrollbar = ttk.Scrollbar(self.dialog, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
+        scrollable_frame = ttk.Frame(canvas, style="Surface.TFrame")
         
         scrollable_frame.bind(
             "<Configure>",
@@ -55,7 +62,7 @@ class ServiceEditorDialog:
         # Store canvas reference for cleanup
         self.canvas = canvas
         
-        main_frame = ttk.Frame(scrollable_frame, padding="20")
+        main_frame = ttk.Frame(scrollable_frame, padding="20", style="Surface.TFrame")
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         row = 0
@@ -83,10 +90,15 @@ class ServiceEditorDialog:
         # Workspace
         ttk.Label(main_frame, text="Workspace Directory:", font=('', 9, 'bold')).grid(row=row, column=0, sticky=tk.W, pady=(0, 5))
         row += 1
-        self.workspace_label = ttk.Label(main_frame, text="(Required for NPM scripts)", font=('', 8, 'italic'), foreground='gray')
+        self.workspace_label = ttk.Label(
+            main_frame,
+            text="(Required for NPM scripts)",
+            font=('', 8, 'italic'),
+            foreground=COLORS["muted_text"]
+        )
         self.workspace_label.grid(row=row, column=0, sticky=tk.W)
         row += 1
-        workspace_frame = ttk.Frame(main_frame)
+        workspace_frame = ttk.Frame(main_frame, style="Surface.TFrame")
         workspace_frame.grid(row=row, column=0, columnspan=2, pady=(0, 15), sticky=tk.EW)
         self.workspace_var = tk.StringVar()
         self.workspace_entry = ttk.Entry(workspace_frame, textvariable=self.workspace_var)
@@ -97,10 +109,15 @@ class ServiceEditorDialog:
         # Command/Executable
         ttk.Label(main_frame, text="Command / Executable:", font=('', 9, 'bold')).grid(row=row, column=0, sticky=tk.W, pady=(0, 5))
         row += 1
-        self.command_label = ttk.Label(main_frame, text="(For executables: .exe path, For NPM: command like 'pnpm dev')", font=('', 8, 'italic'), foreground='gray')
+        self.command_label = ttk.Label(
+            main_frame,
+            text="(For executables: .exe path, For NPM: command like 'pnpm dev')",
+            font=('', 8, 'italic'),
+            foreground=COLORS["muted_text"]
+        )
         self.command_label.grid(row=row, column=0, columnspan=2, sticky=tk.W)
         row += 1
-        command_frame = ttk.Frame(main_frame)
+        command_frame = ttk.Frame(main_frame, style="Surface.TFrame")
         command_frame.grid(row=row, column=0, columnspan=2, pady=(0, 15), sticky=tk.EW)
         self.command_var = tk.StringVar()
         self.command_entry = ttk.Entry(command_frame, textvariable=self.command_var)
@@ -112,7 +129,12 @@ class ServiceEditorDialog:
         # Arguments
         ttk.Label(main_frame, text="Arguments:", font=('', 9, 'bold')).grid(row=row, column=0, sticky=tk.W, pady=(0, 5))
         row += 1
-        ttk.Label(main_frame, text="(Space-separated, e.g., --host --port 3000)", font=('', 8, 'italic'), foreground='gray').grid(row=row, column=0, sticky=tk.W)
+        ttk.Label(
+            main_frame,
+            text="(Space-separated, e.g., --host --port 3000)",
+            font=('', 8, 'italic'),
+            foreground=COLORS["muted_text"]
+        ).grid(row=row, column=0, sticky=tk.W)
         row += 1
         self.args_var = tk.StringVar()
         ttk.Entry(main_frame, textvariable=self.args_var, width=60).grid(row=row, column=0, columnspan=2, pady=(0, 15), sticky=tk.EW)
@@ -147,7 +169,7 @@ class ServiceEditorDialog:
         ).grid(row=row, column=0, sticky=tk.W, pady=5)
         row += 1
         
-        profile_dir_frame = ttk.Frame(main_frame)
+        profile_dir_frame = ttk.Frame(main_frame, style="Surface.TFrame")
         profile_dir_frame.grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=5)
         self.profile_dir_var = tk.StringVar()
         ttk.Label(profile_dir_frame, text="Profile storage dir (optional):").pack(side=tk.LEFT, padx=(0, 5))
@@ -160,12 +182,12 @@ class ServiceEditorDialog:
             main_frame,
             text="(Leave blank to use %USERPROFILE%/.watchdogd_launcher/profiles/<service-name>)",
             font=('', 8, 'italic'),
-            foreground='gray'
+            foreground=COLORS["muted_text"]
         ).grid(row=row, column=0, columnspan=2, sticky=tk.W, padx=(20, 0))
         row += 1
         
         # Startup Delay
-        delay_frame = ttk.Frame(main_frame)
+        delay_frame = ttk.Frame(main_frame, style="Surface.TFrame")
         delay_frame.grid(row=row, column=0, sticky=tk.W, pady=10)
         ttk.Label(delay_frame, text="Startup Delay:").pack(side=tk.LEFT, padx=(0, 5))
         self.delay_var = tk.IntVar(value=0)
@@ -174,7 +196,7 @@ class ServiceEditorDialog:
         row += 1
         
         # Minimum Uptime for Crash
-        uptime_frame = ttk.Frame(main_frame)
+        uptime_frame = ttk.Frame(main_frame, style="Surface.TFrame")
         uptime_frame.grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5)
         ttk.Label(uptime_frame, text="Minimum Uptime for Crash:").pack(side=tk.LEFT, padx=(0, 5))
         self.min_uptime_var = tk.IntVar(value=0)
@@ -187,7 +209,7 @@ class ServiceEditorDialog:
             main_frame,
             text="(Set to 0 for browsers/editors that redirect to existing instances)",
             font=('', 8, 'italic'),
-            foreground='gray'
+            foreground=COLORS["muted_text"]
         )
         help_label.grid(row=row, column=0, columnspan=2, sticky=tk.W, padx=(20, 0))
         row += 1
@@ -196,7 +218,7 @@ class ServiceEditorDialog:
         main_frame.columnconfigure(0, weight=1)
         
         # Buttons at bottom
-        button_frame = ttk.Frame(self.dialog)
+        button_frame = ttk.Frame(self.dialog, style="Surface.TFrame")
         button_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=20)
         
         ttk.Button(button_frame, text="Cancel", command=self._on_cancel).pack(side=tk.RIGHT, padx=(5, 0))

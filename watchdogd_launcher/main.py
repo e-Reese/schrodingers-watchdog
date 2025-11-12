@@ -6,12 +6,14 @@ from pathlib import Path
 
 from .config_manager import ConfigManager
 from .gui.main_window import MainWindow
+from .gui.theme import apply_dark_theme
 
 
 def main():
     """Main entry point"""
     # Create root window
     root = tk.Tk()
+    apply_dark_theme(root)
     
     # Initialize configuration manager
     config_manager = ConfigManager()

@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 
 from .service_editor import ServiceEditorDialog
 from ..config_manager import ConfigManager
+from .theme import COLORS
 
 
 class SettingsDialog:
@@ -18,6 +19,7 @@ class SettingsDialog:
         self.dialog.geometry("900x600")
         self.dialog.transient(parent)
         self.dialog.grab_set()
+        self.dialog.configure(bg=COLORS["background"])
         
         self.services = self.config_manager.get_services().copy()
         self.modified = False
@@ -34,16 +36,16 @@ class SettingsDialog:
     def _create_widgets(self):
         """Create dialog widgets"""
         # Title
-        title_frame = ttk.Frame(self.dialog, padding="10")
+        title_frame = ttk.Frame(self.dialog, padding="10", style="Surface.TFrame")
         title_frame.pack(fill=tk.X)
         ttk.Label(title_frame, text="Service Configuration Manager", font=('', 12, 'bold')).pack()
         
         # Main content area
-        content_frame = ttk.Frame(self.dialog, padding="10")
+        content_frame = ttk.Frame(self.dialog, padding="10", style="Surface.TFrame")
         content_frame.pack(fill=tk.BOTH, expand=True)
         
         # Service list
-        list_frame = ttk.LabelFrame(content_frame, text="Services", padding="10")
+        list_frame = ttk.LabelFrame(content_frame, text="Services", padding="10", style="Surface.TLabelframe")
         list_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         
         # Treeview for services
@@ -77,7 +79,7 @@ class SettingsDialog:
         self.tree.bind('<Double-Button-1>', lambda e: self._edit_service())
         
         # Button panel
-        button_panel = ttk.Frame(content_frame)
+        button_panel = ttk.Frame(content_frame, style="Surface.TFrame")
         button_panel.pack(side=tk.RIGHT, fill=tk.Y)
         
         ttk.Button(button_panel, text="Add Service", command=self._add_service, width=15).pack(pady=5)
@@ -95,7 +97,7 @@ class SettingsDialog:
         ttk.Button(button_panel, text="Toggle Enabled", command=self._toggle_enabled, width=15).pack(pady=5)
         
         # Bottom buttons
-        bottom_frame = ttk.Frame(self.dialog, padding="10")
+        bottom_frame = ttk.Frame(self.dialog, padding="10", style="Surface.TFrame")
         bottom_frame.pack(fill=tk.X)
         
         ttk.Button(bottom_frame, text="Close", command=self._on_close).pack(side=tk.RIGHT, padx=(5, 0))

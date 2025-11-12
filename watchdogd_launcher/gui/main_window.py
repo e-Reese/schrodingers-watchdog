@@ -13,10 +13,15 @@ from ..service_manager import ServiceManager
 from ..utils.logger import Logger
 from ..utils.process_utils import kill_processes_by_name
 from .settings_dialog import SettingsDialog
+from .theme import COLORS, apply_surface_background
 
 
 class MainWindow:
     """Main GUI window for Watchdogd Launcher"""
+    
+    STATUS_RUNNING_COLOR = "#7ad77a"
+    STATUS_ERROR_COLOR = "#ff6b6b"
+    STATUS_STOPPED_COLOR = COLORS["muted_text"]
     
     def __init__(self, root: tk.Tk, config_manager: ConfigManager):
         self.root = root
@@ -66,7 +71,7 @@ class MainWindow:
     def _create_gui(self):
         """Create the GUI layout"""
         # Title
-        title_frame = ttk.Frame(self.root, padding="10")
+        title_frame = ttk.Frame(self.root, padding="10", style="Surface.TFrame")
         title_frame.pack(fill=tk.X)
         
         title_label = ttk.Label(
@@ -77,7 +82,7 @@ class MainWindow:
         title_label.pack()
         
         # Control buttons
-        button_frame = ttk.Frame(self.root, padding="10")
+        button_frame = ttk.Frame(self.root, padding="10", style="Surface.TFrame")
         button_frame.pack(fill=tk.X)
         
         self.start_button = ttk.Button(
@@ -123,13 +128,19 @@ class MainWindow:
         self.auto_open_check.pack(side=tk.LEFT, padx=15)
         
         # Status indicators
-        status_frame = ttk.LabelFrame(self.root, text="Service Status", padding="10")
+        status_frame = ttk.LabelFrame(self.root, text="Service Status", padding="10", style="Surface.TLabelframe")
         status_frame.pack(fill=tk.BOTH, padx=10, pady=5)
         
         # Create a frame with scrollbar for status
-        status_canvas = tk.Canvas(status_frame, height=150)
+        status_canvas = tk.Canvas(
+            status_frame,
+            height=150,
+            bg=COLORS["surface"],
+            highlightthickness=0,
+            borderwidth=0
+        )
         status_scrollbar = ttk.Scrollbar(status_frame, orient=tk.VERTICAL, command=status_canvas.yview)
-        self.status_container = ttk.Frame(status_canvas)
+        self.status_container = ttk.Frame(status_canvas, style="Surface.TFrame")
         
         self.status_container.bind(
             "<Configure>",
@@ -153,15 +164,20 @@ class MainWindow:
         self._refresh_status_display()
         
         # Log output
-        log_frame = ttk.LabelFrame(self.root, text="Activity Log", padding="10")
+        log_frame = ttk.LabelFrame(self.root, text="Activity Log", padding="10", style="Surface.TLabelframe")
         log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         self.log_text = scrolledtext.ScrolledText(
             log_frame, 
             height=20, 
             wrap=tk.WORD,
-            font=("Consolas", 9)
+            font=("Consolas", 9),
+            relief="flat",
+            borderwidth=0,
+            highlightbackground=COLORS["border"],
+            highlightthickness=1
         )
+        apply_surface_background(self.log_text)
         self.log_text.pack(fill=tk.BOTH, expand=True)
         
         # Clear log button
@@ -183,7 +199,7 @@ class MainWindow:
                 self.status_container, 
                 text="No services configured. Use 'Manage Services' to add services.",
                 font=('', 9, 'italic'),
-                foreground='gray'
+                foreground=COLORS["muted_text"]
             ).pack(pady=20)
             return
         
@@ -191,14 +207,14 @@ class MainWindow:
             service_name = service_config.get('name', f'Service {i+1}')
             enabled = service_config.get('enabled', True)
             
-            row_frame = ttk.Frame(self.status_container)
+            row_frame = ttk.Frame(self.status_container, style="Surface.TFrame")
             row_frame.pack(fill=tk.X, pady=2)
             
             label = ttk.Label(row_frame, text=f"{service_name}:", width=30, anchor=tk.W)
             label.pack(side=tk.LEFT, padx=5)
             
             status_text = "Disabled" if not enabled else "Stopped"
-            status_color = "gray"
+            status_color = self.STATUS_STOPPED_COLOR
             
             status = ttk.Label(row_frame, text=status_text, foreground=status_color)
             status.pack(side=tk.LEFT)
@@ -260,10 +276,10 @@ class MainWindow:
                 )
                 self.services[service_name] = service_manager
                 service_manager.start()
-                self.update_status(service_name, "Running", "green")
+                self.update_status(service_name, "Running", self.STATUS_RUNNING_COLOR)
             except ValueError as e:
                 self.logger.error(f"Failed to start {service_name}: {e}")
-                self.update_status(service_name, "Error", "red")
+                self.update_status(service_name, "Error", self.STATUS_ERROR_COLOR)
         
         # Open browser after delay if configured
         if self.auto_open_var.get():
@@ -281,7 +297,7 @@ class MainWindow:
         # Stop all services
         for name, service in self.services.items():
             service.stop()
-            self.update_status(name, "Stopped", "gray")
+            self.update_status(name, "Stopped", self.STATUS_STOPPED_COLOR)
             self.logger.info(f"[{name}] Service stopped")
         
         self.services.clear()

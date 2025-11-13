@@ -1,14 +1,29 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec file for Watchdogd Launcher
 
+from pathlib import Path
+
 block_cipher = None
+
+project_root = Path(__name__).parent
+config_dir = project_root / 'config'
+
+datas = [
+    (str(config_dir / 'example_config.json'), 'config'),
+    (str(config_dir / 'README.md'), 'config'),
+]
 
 a = Analysis(
     ['watchdogd-launcher.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=['psutil', 'tkinter', 'tkinter.ttk', 'tkinter.scrolledtext'],
+    datas=datas,
+    hiddenimports=[
+        'psutil',
+        'PyQt6.QtCore',
+        'PyQt6.QtGui',
+        'PyQt6.QtWidgets',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

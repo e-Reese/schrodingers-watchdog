@@ -1,391 +1,300 @@
-"""Service editor dialog for adding/editing service configurations"""
+"""Service editor dialog for adding/editing service configurations (PyQt)."""
 
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-from typing import Optional, Dict, Any
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
+from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ..service_definitions import ServiceStrategyFactory
-from .theme import COLORS
 
 
-class ServiceEditorDialog:
-    """Dialog for adding/editing service configurations"""
-    
-    def __init__(self, parent, service_config: Optional[Dict[str, Any]] = None, title: str = "Service Configuration"):
-        self.result = None
-        self.dialog = tk.Toplevel(parent)
-        self.dialog.title(title)
-        self.dialog.geometry("650x600")
-        self.dialog.transient(parent)
-        self.dialog.grab_set()
-        self.dialog.configure(bg=COLORS["background"])
-        
+class ServiceEditorDialog(QtWidgets.QDialog):
+    """Dialog for creating or editing a single service configuration."""
+
+    def __init__(
+        self,
+        parent: QtWidgets.QWidget,
+        service_config: Optional[Dict[str, Any]] = None,
+        title: str = "Service Configuration",
+    ):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.resize(720, 680)
+        self.setModal(True)
+
         self.service_config = service_config or {}
-        self.is_new = service_config is None
-        
-        self._create_widgets()
-        self._load_values()
-        
-        # Center dialog on parent
-        self.dialog.update_idletasks()
-        x = parent.winfo_x() + (parent.winfo_width() - self.dialog.winfo_width()) // 2
-        y = parent.winfo_y() + (parent.winfo_height() - self.dialog.winfo_height()) // 2
-        self.dialog.geometry(f"+{x}+{y}")
-    
-    def _create_widgets(self):
-        """Create dialog widgets"""
-        # Main container with scrollbar
-        canvas = tk.Canvas(
-            self.dialog,
-            bg=COLORS["surface"],
-            highlightthickness=0,
-            borderwidth=0
-        )
-        scrollbar = ttk.Scrollbar(self.dialog, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas, style="Surface.TFrame")
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Enable mouse wheel scrolling
-        def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        
-        # Bind mouse wheel to canvas and all child widgets
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
-        
-        # Store canvas reference for cleanup
-        self.canvas = canvas
-        
-        main_frame = ttk.Frame(scrollable_frame, padding="20", style="Surface.TFrame")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        row = 0
-        
-        # Service Name
-        ttk.Label(main_frame, text="Service Name:", font=('', 9, 'bold')).grid(row=row, column=0, sticky=tk.W, pady=(0, 5))
-        row += 1
-        self.name_var = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.name_var, width=60).grid(row=row, column=0, columnspan=2, pady=(0, 15), sticky=tk.EW)
-        row += 1
-        
-        # Service Type
-        ttk.Label(main_frame, text="Service Type:", font=('', 9, 'bold')).grid(row=row, column=0, sticky=tk.W, pady=(0, 5))
-        row += 1
-        self.type_var = tk.StringVar()
-        type_display = ServiceStrategyFactory.get_type_display_names()
-        type_values = list(type_display.values())
-        self.type_combo = ttk.Combobox(main_frame, textvariable=self.type_var, 
-                                   values=type_values,
-                                   state='readonly', width=57)
-        self.type_combo.grid(row=row, column=0, columnspan=2, pady=(0, 15), sticky=tk.EW)
-        self.type_combo.bind('<<ComboboxSelected>>', self._on_type_changed)
-        row += 1
-        
-        # Workspace
-        ttk.Label(main_frame, text="Workspace Directory:", font=('', 9, 'bold')).grid(row=row, column=0, sticky=tk.W, pady=(0, 5))
-        row += 1
-        self.workspace_label = ttk.Label(
-            main_frame,
-            text="(Required for NPM scripts)",
-            font=('', 8, 'italic'),
-            foreground=COLORS["muted_text"]
-        )
-        self.workspace_label.grid(row=row, column=0, sticky=tk.W)
-        row += 1
-        workspace_frame = ttk.Frame(main_frame, style="Surface.TFrame")
-        workspace_frame.grid(row=row, column=0, columnspan=2, pady=(0, 15), sticky=tk.EW)
-        self.workspace_var = tk.StringVar()
-        self.workspace_entry = ttk.Entry(workspace_frame, textvariable=self.workspace_var)
-        self.workspace_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Button(workspace_frame, text="Browse...", command=self._browse_workspace, width=12).pack(side=tk.LEFT, padx=(5, 0))
-        row += 1
-        
-        # Command/Executable
-        ttk.Label(main_frame, text="Command / Executable:", font=('', 9, 'bold')).grid(row=row, column=0, sticky=tk.W, pady=(0, 5))
-        row += 1
-        self.command_label = ttk.Label(
-            main_frame,
-            text="(For executables: .exe path, For NPM: command like 'pnpm dev')",
-            font=('', 8, 'italic'),
-            foreground=COLORS["muted_text"]
-        )
-        self.command_label.grid(row=row, column=0, columnspan=2, sticky=tk.W)
-        row += 1
-        command_frame = ttk.Frame(main_frame, style="Surface.TFrame")
-        command_frame.grid(row=row, column=0, columnspan=2, pady=(0, 15), sticky=tk.EW)
-        self.command_var = tk.StringVar()
-        self.command_entry = ttk.Entry(command_frame, textvariable=self.command_var)
-        self.command_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.browse_command_btn = ttk.Button(command_frame, text="Browse...", command=self._browse_command, width=12)
-        self.browse_command_btn.pack(side=tk.LEFT, padx=(5, 0))
-        row += 1
-        
-        # Arguments
-        ttk.Label(main_frame, text="Arguments:", font=('', 9, 'bold')).grid(row=row, column=0, sticky=tk.W, pady=(0, 5))
-        row += 1
-        ttk.Label(
-            main_frame,
-            text="(Space-separated, e.g., --host --port 3000)",
-            font=('', 8, 'italic'),
-            foreground=COLORS["muted_text"]
-        ).grid(row=row, column=0, sticky=tk.W)
-        row += 1
-        self.args_var = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.args_var, width=60).grid(row=row, column=0, columnspan=2, pady=(0, 15), sticky=tk.EW)
-        row += 1
-        
-        # Options section
-        ttk.Separator(main_frame, orient='horizontal').grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=15)
-        row += 1
-        
-        ttk.Label(main_frame, text="Options:", font=('', 10, 'bold')).grid(row=row, column=0, sticky=tk.W, pady=(0, 10))
-        row += 1
-        
-        # Checkboxes
-        self.enabled_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(main_frame, text="Enable this service", variable=self.enabled_var).grid(row=row, column=0, sticky=tk.W, pady=5)
-        row += 1
-        
-        self.auto_restart_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(main_frame, text="Auto-restart on crash", variable=self.auto_restart_var).grid(row=row, column=0, sticky=tk.W, pady=5)
-        row += 1
-        
-        self.track_children_var = tk.BooleanVar(value=False)
-        track_check = ttk.Checkbutton(main_frame, text="Track child processes (for browsers/editors)", variable=self.track_children_var)
-        track_check.grid(row=row, column=0, sticky=tk.W, pady=5)
-        row += 1
-        
-        self.use_unique_profile_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            main_frame,
-            text="Launch with isolated browser profile (--user-data-dir)",
-            variable=self.use_unique_profile_var
-        ).grid(row=row, column=0, sticky=tk.W, pady=5)
-        row += 1
-        
-        profile_dir_frame = ttk.Frame(main_frame, style="Surface.TFrame")
-        profile_dir_frame.grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=5)
-        self.profile_dir_var = tk.StringVar()
-        ttk.Label(profile_dir_frame, text="Profile storage dir (optional):").pack(side=tk.LEFT, padx=(0, 5))
-        profile_entry = ttk.Entry(profile_dir_frame, textvariable=self.profile_dir_var)
-        profile_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Button(profile_dir_frame, text="Browse...", command=self._browse_profile_dir, width=12).pack(side=tk.LEFT, padx=(5, 0))
-        row += 1
-        
-        ttk.Label(
-            main_frame,
-            text="(Leave blank to use %USERPROFILE%/.watchdogd_launcher/profiles/<service-name>)",
-            font=('', 8, 'italic'),
-            foreground=COLORS["muted_text"]
-        ).grid(row=row, column=0, columnspan=2, sticky=tk.W, padx=(20, 0))
-        row += 1
-        
-        # Startup Delay
-        delay_frame = ttk.Frame(main_frame, style="Surface.TFrame")
-        delay_frame.grid(row=row, column=0, sticky=tk.W, pady=10)
-        ttk.Label(delay_frame, text="Startup Delay:").pack(side=tk.LEFT, padx=(0, 5))
-        self.delay_var = tk.IntVar(value=0)
-        ttk.Spinbox(delay_frame, from_=0, to=60, textvariable=self.delay_var, width=8).pack(side=tk.LEFT)
-        ttk.Label(delay_frame, text="seconds").pack(side=tk.LEFT, padx=(5, 0))
-        row += 1
-        
-        # Minimum Uptime for Crash
-        uptime_frame = ttk.Frame(main_frame, style="Surface.TFrame")
-        uptime_frame.grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=5)
-        ttk.Label(uptime_frame, text="Minimum Uptime for Crash:").pack(side=tk.LEFT, padx=(0, 5))
-        self.min_uptime_var = tk.IntVar(value=0)
-        ttk.Spinbox(uptime_frame, from_=0, to=300, textvariable=self.min_uptime_var, width=8).pack(side=tk.LEFT)
-        ttk.Label(uptime_frame, text="seconds").pack(side=tk.LEFT, padx=(5, 0))
-        row += 1
-        
-        # Help text for min uptime
-        help_label = ttk.Label(
-            main_frame,
-            text="(Set to 0 for browsers/editors that redirect to existing instances)",
-            font=('', 8, 'italic'),
-            foreground=COLORS["muted_text"]
-        )
-        help_label.grid(row=row, column=0, columnspan=2, sticky=tk.W, padx=(20, 0))
-        row += 1
-        
-        # Configure grid weights
-        main_frame.columnconfigure(0, weight=1)
-        
-        # Buttons at bottom
-        button_frame = ttk.Frame(self.dialog, style="Surface.TFrame")
-        button_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=20)
-        
-        ttk.Button(button_frame, text="Cancel", command=self._on_cancel).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(button_frame, text="Save", command=self._on_ok).pack(side=tk.RIGHT)
-        
-        # Pack canvas and scrollbar
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-    
-    def _load_values(self):
-        """Load values from existing config"""
-        if self.service_config:
-            self.name_var.set(self.service_config.get('name', ''))
-            
-            # Set service type (convert internal name to display name)
-            service_type = self.service_config.get('type', 'executable')
-            type_display = ServiceStrategyFactory.get_type_display_names()
-            display_name = type_display.get(service_type, 'Executable (.exe)')
-            self.type_var.set(display_name)
-            
-            self.workspace_var.set(self.service_config.get('workspace', ''))
-            self.command_var.set(self.service_config.get('command', ''))
-            args = self.service_config.get('args', [])
-            self.args_var.set(' '.join(args) if isinstance(args, list) else '')
-            self.enabled_var.set(self.service_config.get('enabled', True))
-            self.auto_restart_var.set(self.service_config.get('auto_restart', True))
-            self.delay_var.set(self.service_config.get('startup_delay', 0))
-            self.min_uptime_var.set(self.service_config.get('min_uptime_for_crash', 0))
-            self.track_children_var.set(self.service_config.get('track_child_processes', False))
-            self.use_unique_profile_var.set(self.service_config.get('use_unique_profile', True))
-            self.profile_dir_var.set(self.service_config.get('profile_base_dir', ''))
-        else:
-            self.type_var.set('Executable (.exe)')
-            self.use_unique_profile_var.set(True)
-        
-        self._on_type_changed()
-    
-    def _on_type_changed(self, event=None):
-        """Handle service type change"""
-        display_value = self.type_var.get()
-        type_display = ServiceStrategyFactory.get_type_display_names()
-        
-        # Reverse lookup to get internal type name
-        internal_type = None
-        for key, value in type_display.items():
-            if value == display_value:
-                internal_type = key
-                break
-        
-        # Show/hide workspace based on type
-        if internal_type == 'npm_script':
-            self.workspace_label.config(text="(Required for NPM scripts)")
-        elif internal_type == 'powershell_script':
-            self.workspace_label.config(text="(Optional, defaults to script directory)")
-        else:
-            self.workspace_label.config(text="(Not used for executables)")
-        
-        # Update command label
-        if internal_type == 'npm_script':
-            self.command_label.config(text="(Command like 'pnpm dev' or 'npm start')")
-            self.browse_command_btn.config(state=tk.DISABLED)
-        elif internal_type == 'powershell_script':
-            self.command_label.config(text="(Path to .ps1 script file)")
-            self.browse_command_btn.config(state=tk.NORMAL)
-        else:
-            self.command_label.config(text="(Path to .exe executable file)")
-            self.browse_command_btn.config(state=tk.NORMAL)
-    
-    def _browse_workspace(self):
-        """Browse for workspace directory"""
-        directory = filedialog.askdirectory(title="Select Workspace Directory")
-        if directory:
-            self.workspace_var.set(directory)
-    
-    def _browse_profile_dir(self):
-        """Browse for isolated profile storage directory"""
-        directory = filedialog.askdirectory(title="Select Profile Storage Directory")
-        if directory:
-            self.profile_dir_var.set(directory)
-    
-    def _browse_command(self):
-        """Browse for executable or script"""
-        display_value = self.type_var.get()
-        type_display = ServiceStrategyFactory.get_type_display_names()
-        
-        internal_type = None
-        for key, value in type_display.items():
-            if value == display_value:
-                internal_type = key
-                break
-        
-        if internal_type == 'executable':
-            file_path = filedialog.askopenfilename(
-                title="Select Executable",
-                filetypes=[("Executables", "*.exe"), ("All files", "*.*")]
-            )
-        elif internal_type == 'powershell_script':
-            file_path = filedialog.askopenfilename(
-                title="Select PowerShell Script",
-                filetypes=[("PowerShell Scripts", "*.ps1"), ("All files", "*.*")]
-            )
-        else:
-            return
-        
-        if file_path:
-            self.command_var.set(file_path)
-    
-    def _on_ok(self):
-        """Validate and save configuration"""
-        if not self.name_var.get().strip():
-            messagebox.showerror("Validation Error", "Service name is required", parent=self.dialog)
-            return
-        
-        if not self.type_var.get():
-            messagebox.showerror("Validation Error", "Service type is required", parent=self.dialog)
-            return
-        
-        if not self.command_var.get().strip():
-            messagebox.showerror("Validation Error", "Command is required", parent=self.dialog)
-            return
-        
-        # Get internal type name from display name
-        display_value = self.type_var.get()
-        type_display = ServiceStrategyFactory.get_type_display_names()
-        internal_type = None
-        for key, value in type_display.items():
-            if value == display_value:
-                internal_type = key
-                break
-        
-        if internal_type is None:
-            messagebox.showerror("Error", "Invalid service type", parent=self.dialog)
-            return
-        
-        # Build result configuration
-        args_text = self.args_var.get().strip()
-        args_list = args_text.split() if args_text else []
-        
-        self.result = {
-            'name': self.name_var.get().strip(),
-            'type': internal_type,
-            'enabled': self.enabled_var.get(),
-            'auto_restart': self.auto_restart_var.get(),
-            'workspace': self.workspace_var.get().strip(),
-            'command': self.command_var.get().strip(),
-            'args': args_list,
-            'startup_delay': self.delay_var.get(),
-            'min_uptime_for_crash': self.min_uptime_var.get(),
-            'track_child_processes': self.track_children_var.get(),
-            'use_unique_profile': self.use_unique_profile_var.get(),
-            'profile_base_dir': self.profile_dir_var.get().strip(),
-            'environment': self.service_config.get('environment', {})
-        }
-        
-        # Unbind mouse wheel to prevent memory leaks
-        self.canvas.unbind_all("<MouseWheel>")
-        self.dialog.destroy()
-    
-    def _on_cancel(self):
-        """Cancel and close dialog"""
-        self.result = None
-        # Unbind mouse wheel to prevent memory leaks
-        self.canvas.unbind_all("<MouseWheel>")
-        self.dialog.destroy()
-    
-    def show(self) -> Optional[Dict[str, Any]]:
-        """Show dialog and return result"""
-        self.dialog.wait_window()
-        return self.result
+        self.result: Optional[Dict[str, Any]] = None
+        self.type_display = ServiceStrategyFactory.get_type_display_names()
+        self.display_to_type = {v: k for k, v in self.type_display.items()}
 
+        self._build_ui()
+        self._load_values()
+
+    # ------------------------------------------------------------------
+    def _build_ui(self) -> None:
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        layout.addWidget(scroll, stretch=1)
+
+        container = QtWidgets.QWidget()
+        scroll.setWidget(container)
+        self.form_layout = QtWidgets.QFormLayout(container)
+        self.form_layout.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
+        self.form_layout.setFormAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+        self.form_layout.setHorizontalSpacing(18)
+        self.form_layout.setVerticalSpacing(14)
+
+        # Service name
+        self.name_edit = QtWidgets.QLineEdit()
+        self.form_layout.addRow(self._bold_label("Service Name:"), self.name_edit)
+
+        # Type
+        self.type_combo = QtWidgets.QComboBox()
+        self.type_combo.addItems(self.type_display.values())
+        self.type_combo.currentTextChanged.connect(self._on_type_changed)
+        self.form_layout.addRow(self._bold_label("Service Type:"), self.type_combo)
+
+        # Workspace
+        self.workspace_hint = self._hint_label("(Required for NPM scripts)")
+        self.workspace_edit, workspace_btn = self._browse_row(
+            self._browse_workspace, placeholder="Path to workspace directory"
+        )
+        workspace_layout = QtWidgets.QVBoxLayout()
+        workspace_layout.addLayout(self._row_layout(self.workspace_edit, workspace_btn))
+        workspace_layout.addWidget(self.workspace_hint)
+        self.form_layout.addRow(self._bold_label("Workspace Directory:"), workspace_layout)
+
+        # Command
+        self.command_hint = self._hint_label(
+            "(For executables: .exe path, For NPM: command like 'pnpm dev')"
+        )
+        self.command_edit, self.command_browse_btn = self._browse_row(
+            self._browse_command, placeholder="Command or path"
+        )
+        command_layout = QtWidgets.QVBoxLayout()
+        command_layout.addLayout(
+            self._row_layout(self.command_edit, self.command_browse_btn)
+        )
+        command_layout.addWidget(self.command_hint)
+        self.form_layout.addRow(self._bold_label("Command / Executable:"), command_layout)
+
+        # Arguments
+        self.args_edit = QtWidgets.QLineEdit()
+        args_layout = QtWidgets.QVBoxLayout()
+        args_layout.addWidget(self.args_edit)
+        args_layout.addWidget(
+            self._hint_label("(Space-separated, e.g., --host --port 3000)")
+        )
+        self.form_layout.addRow(self._bold_label("Arguments:"), args_layout)
+
+        # Options
+        options_box = QtWidgets.QGroupBox("Options")
+        options_layout = QtWidgets.QVBoxLayout(options_box)
+        options_layout.setSpacing(6)
+
+        self.enabled_checkbox = QtWidgets.QCheckBox("Enable this service")
+        self.auto_restart_checkbox = QtWidgets.QCheckBox("Auto-restart on crash")
+        self.track_children_checkbox = QtWidgets.QCheckBox(
+            "Track child processes (for browsers/editors)"
+        )
+        self.unique_profile_checkbox = QtWidgets.QCheckBox(
+            "Launch with isolated browser profile (--user-data-dir)"
+        )
+        options_layout.addWidget(self.enabled_checkbox)
+        options_layout.addWidget(self.auto_restart_checkbox)
+        options_layout.addWidget(self.track_children_checkbox)
+        options_layout.addWidget(self.unique_profile_checkbox)
+        self.form_layout.addRow(options_box)
+
+        # Profile directory
+        self.profile_dir_edit, profile_btn = self._browse_row(
+            self._browse_profile_dir, placeholder="Optional profile storage directory"
+        )
+        profile_layout = QtWidgets.QVBoxLayout()
+        profile_layout.addLayout(self._row_layout(self.profile_dir_edit, profile_btn))
+        profile_layout.addWidget(
+            self._hint_label(
+                "(Leave blank to use %USERPROFILE%/.watchdogd_launcher/profiles/<service-name>)"
+            )
+        )
+        self.form_layout.addRow(self._bold_label("Profile Storage Directory:"), profile_layout)
+
+        # Startup delay
+        self.delay_spin = QtWidgets.QSpinBox()
+        self.delay_spin.setRange(0, 600)
+        self.delay_spin.setSuffix(" seconds")
+        self.form_layout.addRow(self._bold_label("Startup Delay:"), self.delay_spin)
+
+        # Min uptime
+        self.min_uptime_spin = QtWidgets.QSpinBox()
+        self.min_uptime_spin.setRange(0, 3600)
+        min_uptime_layout = QtWidgets.QVBoxLayout()
+        min_uptime_layout.addWidget(self.min_uptime_spin)
+        min_uptime_layout.addWidget(
+            self._hint_label("(Set to 0 for browsers/editors that redirect to existing instances)")
+        )
+        self.form_layout.addRow(self._bold_label("Minimum Uptime for Crash:"), min_uptime_layout)
+
+        # Buttons
+        button_box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Save
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def _bold_label(self, text: str) -> QtWidgets.QLabel:
+        label = QtWidgets.QLabel(text)
+        font = label.font()
+        font.setBold(True)
+        label.setFont(font)
+        return label
+
+    def _hint_label(self, text: str) -> QtWidgets.QLabel:
+        label = QtWidgets.QLabel(text)
+        label.setStyleSheet("color: #888888; font-style: italic;")
+        label.setWordWrap(True)
+        return label
+
+    def _row_layout(
+        self, widget: QtWidgets.QWidget, button: QtWidgets.QWidget
+    ) -> QtWidgets.QHBoxLayout:
+        layout = QtWidgets.QHBoxLayout()
+        layout.addWidget(widget)
+        layout.addWidget(button)
+        return layout
+
+    def _browse_row(
+        self, callback, *, placeholder: str = ""
+    ) -> tuple[QtWidgets.QLineEdit, QtWidgets.QPushButton]:
+        edit = QtWidgets.QLineEdit()
+        edit.setPlaceholderText(placeholder)
+        button = QtWidgets.QPushButton("Browse...")
+        button.clicked.connect(callback)
+        return edit, button
+
+    # ------------------------------------------------------------------
+    def _load_values(self) -> None:
+        config = self.service_config
+        self.name_edit.setText(config.get("name", ""))
+        service_type = config.get("type", "executable")
+        display_name = self.type_display.get(service_type, "Executable (.exe)")
+        index = self.type_combo.findText(display_name)
+        if index >= 0:
+            self.type_combo.setCurrentIndex(index)
+
+        self.workspace_edit.setText(config.get("workspace", ""))
+        self.command_edit.setText(config.get("command", ""))
+
+        args = config.get("args", [])
+        if isinstance(args, list):
+            self.args_edit.setText(" ".join(args))
+        else:
+            self.args_edit.setText(str(args))
+
+        self.enabled_checkbox.setChecked(config.get("enabled", True))
+        self.auto_restart_checkbox.setChecked(config.get("auto_restart", True))
+        self.track_children_checkbox.setChecked(config.get("track_child_processes", False))
+        self.unique_profile_checkbox.setChecked(config.get("use_unique_profile", True))
+        self.profile_dir_edit.setText(config.get("profile_base_dir", ""))
+        self.delay_spin.setValue(config.get("startup_delay", 0))
+        self.min_uptime_spin.setValue(config.get("min_uptime_for_crash", 0))
+
+        self._on_type_changed(self.type_combo.currentText())
+
+    # ------------------------------------------------------------------
+    def _on_type_changed(self, display_value: str) -> None:
+        internal_type = self.display_to_type.get(display_value, "executable")
+        if internal_type == "npm_script":
+            self.workspace_hint.setText("(Required for NPM scripts)")
+            self.command_hint.setText("(Command like 'pnpm dev' or 'npm start')")
+            self.command_browse_btn.setEnabled(False)
+        elif internal_type == "powershell_script":
+            self.workspace_hint.setText("(Optional, defaults to script directory)")
+            self.command_hint.setText("(Path to .ps1 script file)")
+            self.command_browse_btn.setEnabled(True)
+        else:
+            self.workspace_hint.setText("(Not used for executables)")
+            self.command_hint.setText("(Path to .exe executable file)")
+            self.command_browse_btn.setEnabled(True)
+
+    # ------------------------------------------------------------------
+    def _browse_workspace(self) -> None:
+        directory = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Select Workspace Directory"
+        )
+        if directory:
+            self.workspace_edit.setText(directory)
+
+    def _browse_profile_dir(self) -> None:
+        directory = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Select Profile Storage Directory"
+        )
+        if directory:
+            self.profile_dir_edit.setText(directory)
+
+    def _browse_command(self) -> None:
+        display_value = self.type_combo.currentText()
+        internal_type = self.display_to_type.get(display_value, "executable")
+
+        if internal_type == "executable":
+            file_filter = "Executables (*.exe);;All Files (*.*)"
+        else:  # powershell_script
+            file_filter = "PowerShell Scripts (*.ps1);;All Files (*.*)"
+
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Select Command",
+            filter=file_filter,
+        )
+        if file_path:
+            self.command_edit.setText(file_path)
+
+    # ------------------------------------------------------------------
+    def accept(self) -> None:  # type: ignore[override]
+        data = self._build_result()
+        if data is None:
+            return
+        self.result = data
+        super().accept()
+
+    def _build_result(self) -> Optional[Dict[str, Any]]:
+        name = self.name_edit.text().strip()
+        if not name:
+            QtWidgets.QMessageBox.warning(self, "Validation Error", "Service name is required.")
+            return None
+
+        display_value = self.type_combo.currentText()
+        internal_type = self.display_to_type.get(display_value)
+        if not internal_type:
+            QtWidgets.QMessageBox.warning(self, "Validation Error", "Service type is required.")
+            return None
+
+        command = self.command_edit.text().strip()
+        if not command:
+            QtWidgets.QMessageBox.warning(self, "Validation Error", "Command is required.")
+            return None
+
+        args_text = self.args_edit.text().strip()
+        args_list = args_text.split() if args_text else []
+
+        return {
+            "name": name,
+            "type": internal_type,
+            "enabled": self.enabled_checkbox.isChecked(),
+            "auto_restart": self.auto_restart_checkbox.isChecked(),
+            "workspace": self.workspace_edit.text().strip(),
+            "command": command,
+            "args": args_list,
+            "startup_delay": self.delay_spin.value(),
+            "min_uptime_for_crash": self.min_uptime_spin.value(),
+            "track_child_processes": self.track_children_checkbox.isChecked(),
+            "use_unique_profile": self.unique_profile_checkbox.isChecked(),
+            "profile_base_dir": self.profile_dir_edit.text().strip(),
+            "environment": self.service_config.get("environment", {}),
+        }

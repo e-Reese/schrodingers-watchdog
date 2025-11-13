@@ -1,30 +1,28 @@
-"""Main entry point for Watchdogd Launcher application"""
+"""Main entry point for Watchdogd Launcher application (PyQt)."""
 
-import tkinter as tk
+from __future__ import annotations
+
 import sys
-from pathlib import Path
+
+from PyQt6 import QtWidgets
 
 from .config_manager import ConfigManager
 from .gui.main_window import MainWindow
 from .gui.theme import apply_dark_theme
 
 
-def main():
-    """Main entry point"""
-    # Create root window
-    root = tk.Tk()
-    apply_dark_theme(root)
-    
-    # Initialize configuration manager
+def main() -> None:
+    """Start the PyQt application."""
+    app = QtWidgets.QApplication(sys.argv)
+    apply_dark_theme(app)
+
     config_manager = ConfigManager()
-    
-    # Create main window
-    app = MainWindow(root, config_manager)
-    
-    # Run the application
-    root.mainloop()
+    window = MainWindow(config_manager)
+    window.show()
+
+    sys.exit(app.exec())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 

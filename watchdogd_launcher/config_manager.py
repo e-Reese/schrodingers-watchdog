@@ -14,6 +14,7 @@ class ConfigManager:
         'app_settings': {
             'check_interval': 5,
             'auto_open_browser': False,
+            'auto_start_services': False,
             'browser_delay': 8,
             'crash_log_enabled': True,
             'frontend_url': 'http://localhost:3000/'

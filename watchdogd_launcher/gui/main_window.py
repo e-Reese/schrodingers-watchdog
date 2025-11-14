@@ -87,7 +87,26 @@ class MainWindow(QtWidgets.QMainWindow):
         title_font.setBold(True)
         title_label.setFont(title_font)
         title_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title_label)
+
+        header_layout = QtWidgets.QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        layout.addLayout(header_layout)
+        header_layout.addStretch()
+        header_layout.addWidget(title_label, stretch=1)
+
+        self.auto_start_checkbox = QtWidgets.QCheckBox("Start services on launch")
+        self.auto_start_checkbox.setToolTip(
+            "Automatically start all enabled services when Watchdogd Launcher opens."
+        )
+        self.auto_start_checkbox.setChecked(
+            self.config_manager.get_app_setting("auto_start_services", False)
+        )
+        self.auto_start_checkbox.toggled.connect(self._toggle_auto_start_services)
+        header_layout.addWidget(
+            self.auto_start_checkbox,
+            alignment=QtCore.Qt.AlignmentFlag.AlignRight
+            | QtCore.Qt.AlignmentFlag.AlignTop,
+        )
 
         # Control buttons
         control_box = QtWidgets.QGroupBox("Controls")
@@ -155,6 +174,8 @@ class MainWindow(QtWidgets.QMainWindow):
         log_layout.addWidget(clear_button, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
 
         self._refresh_status_display()
+        if self.auto_start_checkbox.isChecked():
+            QtCore.QTimer.singleShot(0, self._auto_start_on_launch)
 
     # ------------------------------------------------------------------
     # Logging helpers
@@ -220,6 +241,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.config_manager.set_app_setting("auto_open_browser", new_value)
         status = "enabled" if new_value else "disabled"
         self.logger.info(f"Auto-open browser {status}")
+
+    def _toggle_auto_start_services(self, checked: bool) -> None:
+        self.config_manager.set_app_setting("auto_start_services", checked)
+        status = "enabled" if checked else "disabled"
+        self.logger.info(f"Auto-start services on launch {status}")
 
     def start_all(self) -> None:
         if self.all_running:
@@ -296,6 +322,11 @@ class MainWindow(QtWidgets.QMainWindow):
         time.sleep(delay)
         self.open_browser()
 
+    def _auto_start_on_launch(self) -> None:
+        if not self.all_running and self.auto_start_checkbox.isChecked():
+            self.logger.info("Auto-start setting enabled; starting services.")
+            self.start_all()
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -358,4 +389,3 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
             self.stop_all()
         event.accept()
-

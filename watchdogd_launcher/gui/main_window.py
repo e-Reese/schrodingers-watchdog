@@ -332,7 +332,11 @@ class MainWindow(QtWidgets.QMainWindow):
     # ------------------------------------------------------------------
     def _cleanup_existing_processes(self) -> None:
         self.logger.info("Cleaning up existing processes...")
-        processes_to_kill = ["Watchdogd.exe", "node.exe", "pnpm.exe"]
+        import os
+        if os.name == 'nt':
+            processes_to_kill = ["Watchdogd.exe", "node.exe", "pnpm.exe"]
+        else:
+            processes_to_kill = ["Watchdogd", "node", "pnpm"]
         killed = kill_processes_by_name(processes_to_kill)
         if killed > 0:
             self.logger.info(f"Killed {killed} existing process(es)")

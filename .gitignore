@@ -63,3 +63,7 @@ $RECYCLE.BIN/
 
 # User configuration directory (if created in project)
 .watchdogd_launcher/
+
+# Cursor plugins
+.specstory/*
+.cursorindexingignore

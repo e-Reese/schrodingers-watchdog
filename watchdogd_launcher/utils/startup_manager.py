@@ -1,8 +1,10 @@
-"""Utilities for managing Windows run-on-startup integration."""
+"""Utilities for managing run-on-startup integration (Windows and macOS)."""
 
 from __future__ import annotations
 
 import os
+import platform
+import plistlib
 import sys
 from pathlib import Path
 
@@ -27,49 +29,65 @@ class StartupManager:
     @staticmethod
     def is_supported() -> bool:
         """Return True when run-on-startup integration is available."""
-        return os.name == "nt"
+        return os.name == "nt" or platform.system() == "Darwin"
 
     # ------------------------------------------------------------------
     # Introspection
     # ------------------------------------------------------------------
     def is_enabled(self) -> bool:
-        """Check whether the registry entry currently exists."""
+        """Check whether the startup entry currently exists."""
         if not self.is_supported():
             return False
 
-        try:
-            with winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER, self.RUN_KEY, 0, winreg.KEY_READ
-            ) as key:
-                winreg.QueryValueEx(key, self.value_name)
-                return True
-        except OSError:
-            return False
+        if os.name == "nt":
+            try:
+                with winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER, self.RUN_KEY, 0, winreg.KEY_READ
+                ) as key:
+                    winreg.QueryValueEx(key, self.value_name)
+                    return True
+            except OSError:
+                return False
+        elif platform.system() == "Darwin":
+            plist_path = self._get_macos_plist_path()
+            return plist_path.exists()
+        
+        return False
 
     # ------------------------------------------------------------------
     # Mutators
     # ------------------------------------------------------------------
     def enable(self) -> None:
-        """Create/update the Run entry for this app."""
+        """Create/update the startup entry for this app."""
         if not self.is_supported():
-            raise OSError("Run on startup is only supported on Windows.")
+            raise OSError("Run on startup is only supported on Windows and macOS.")
 
-        command = self._build_command()
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, self.RUN_KEY) as key:
-            winreg.SetValueEx(key, self.value_name, 0, winreg.REG_SZ, command)
+        if os.name == "nt":
+            command = self._build_command()
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, self.RUN_KEY) as key:
+                winreg.SetValueEx(key, self.value_name, 0, winreg.REG_SZ, command)
+        elif platform.system() == "Darwin":
+            self._create_macos_launch_agent()
 
     def disable(self) -> None:
-        """Remove the Run entry if it exists."""
+        """Remove the startup entry if it exists."""
         if not self.is_supported():
             return
 
-        try:
-            with winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER, self.RUN_KEY, 0, winreg.KEY_SET_VALUE
-            ) as key:
-                winreg.DeleteValue(key, self.value_name)
-        except FileNotFoundError:
-            pass
+        if os.name == "nt":
+            try:
+                with winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER, self.RUN_KEY, 0, winreg.KEY_SET_VALUE
+                ) as key:
+                    winreg.DeleteValue(key, self.value_name)
+            except FileNotFoundError:
+                pass
+        elif platform.system() == "Darwin":
+            plist_path = self._get_macos_plist_path()
+            try:
+                plist_path.unlink()
+            except FileNotFoundError:
+                pass
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -86,4 +104,33 @@ class StartupManager:
             return f'"{executable}" "{script_path}"'
 
         return f'"{script_path}"'
+
+    def _get_macos_plist_path(self) -> Path:
+        """Return the path to the LaunchAgent plist file on macOS."""
+        launch_agents_dir = Path.home() / "Library" / "LaunchAgents"
+        return launch_agents_dir / "com.watchdogd-launcher.plist"
+
+    def _create_macos_launch_agent(self) -> None:
+        """Create a LaunchAgent plist file for macOS."""
+        plist_path = self._get_macos_plist_path()
+        plist_path.parent.mkdir(parents=True, exist_ok=True)
+
+        executable = Path(sys.executable).resolve()
+        if getattr(sys, "frozen", False):
+            # PyInstaller build - use the app bundle or executable
+            program_args = [str(executable)]
+        else:
+            # Running from source
+            script_path = Path(sys.argv[0]).resolve()
+            program_args = [str(executable), str(script_path)]
+
+        plist_data = {
+            "Label": "com.watchdogd-launcher",
+            "ProgramArguments": program_args,
+            "RunAtLoad": True,
+            "KeepAlive": False,
+        }
+
+        with open(plist_path, "wb") as f:
+            plistlib.dump(plist_data, f)
 

@@ -5,7 +5,10 @@ This directory contains example configuration files for Watchdogd Launcher.
 ## User Configuration
 
 Your personal configuration is stored at:
-`%USERPROFILE%\.watchdogd_launcher\config.json`
+
+**Windows:** `%USERPROFILE%\.watchdogd_launcher\config.json`
+
+**macOS/Linux:** `~/.watchdogd_launcher/config.json`
 
 ## Default Configuration
 
@@ -13,12 +16,12 @@ The `default_config.json` file in this directory is an example configuration wit
 
 ## Service Types
 
-The launcher supports three types of services:
+The launcher supports four types of services:
 
 ### 1. Executable
-Run standalone .exe files
+Run standalone executable files
 - **type**: `executable`
-- **command**: Full path to .exe file
+- **command**: Full path to executable file (.exe on Windows, app on macOS)
 - **args**: Array of command-line arguments
 - **workspace**: Not used (leave empty)
 
@@ -29,12 +32,21 @@ Run npm, pnpm, or yarn commands
 - **args**: Not used (include in command string)
 - **workspace**: Path to project directory
 
-### 3. PowerShell Script
+### 3. PowerShell Script (Windows)
 Run PowerShell .ps1 scripts
 - **type**: `powershell_script`
 - **command**: Full path to .ps1 file
 - **args**: Array of script arguments
 - **workspace**: Working directory for script (optional, defaults to script directory)
+- **Note**: Windows only
+
+### 4. Shell Script (macOS/Linux)
+Run bash/shell .sh scripts
+- **type**: `shell_script`
+- **command**: Full path to .sh file
+- **args**: Array of script arguments
+- **workspace**: Working directory for script (optional, defaults to script directory)
+- **Note**: macOS/Linux only
 
 ## Optional Browser Launching
 
@@ -46,19 +58,33 @@ To use browser launching:
 3. Adjust the `startup_delay` to ensure your services start before the browser opens
 4. The browser will open automatically when you start services
 
-Example:
+**Windows Example:**
 ```json
 {
   "name": "Chrome Browser",
   "type": "executable",
-  "enabled": true,  // Change to true to enable
+  "enabled": true,
   "command": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "args": ["--new-window", "http://localhost:3000"],  // Your URL here
-  "startup_delay": 10  // Wait for services to start
+  "args": ["--new-window", "http://localhost:3000"],
+  "startup_delay": 10
 }
 ```
 
-You can also use other browsers by changing the command path (e.g., Firefox, Edge).
+**macOS Example:**
+```json
+{
+  "name": "Chrome Browser",
+  "type": "executable",
+  "enabled": true,
+  "command": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "args": ["--new-window", "http://localhost:3000"],
+  "startup_delay": 10
+}
+```
+
+You can also use other browsers by changing the command path:
+- **Windows:** Edge, Firefox, etc.
+- **macOS:** Safari (`/Applications/Safari.app/Contents/MacOS/Safari`), Firefox, etc.
 
 ## Common Service Options
 
@@ -106,8 +132,8 @@ This setting enables tracking of child processes spawned by applications like br
 - Simple and reliable
 
 **When to use:**
-- **Browsers** (Chrome, Edge, Firefox) - The launcher starts, passes the URL to an existing browser process, then exits
-- **Editors** (VS Code, Sublime) - The launcher redirects to an existing window, then exits
+- **Browsers** (Chrome, Edge, Firefox, Safari) - The launcher starts, passes the URL to an existing browser process, then exits
+- **Editors** (VS Code, Sublime, TextEdit) - The launcher redirects to an existing window, then exits
 - **Any app that spawns a child and exits immediately**
 
 **Benefits:**

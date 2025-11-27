@@ -114,13 +114,10 @@ class NPMScriptServiceStrategy(ServiceStrategy):
         env = self._prepare_environment(config)
         
         try:
-            return subprocess.Popen(
-                command,
-                cwd=workspace,
-                shell=True,
-                env=env,
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
+            kwargs = {'cwd': workspace, 'shell': True, 'env': env}
+            if os.name == 'nt':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            return subprocess.Popen(command, **kwargs)
         except Exception as e:
             print(f"Error starting npm script: {e}")
             return None
@@ -170,15 +167,63 @@ class PowerShellScriptServiceStrategy(ServiceStrategy):
         env = self._prepare_environment(config)
         
         try:
-            return subprocess.Popen(
-                cmd,
-                cwd=workspace,
-                shell=True,
-                env=env,
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
+            kwargs = {'cwd': workspace, 'shell': True, 'env': env}
+            if os.name == 'nt':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            return subprocess.Popen(cmd, **kwargs)
         except Exception as e:
             print(f"Error starting PowerShell script: {e}")
+            return None
+    
+    def validate_config(self, config: Dict[str, Any]) -> Tuple[bool, str]:
+        if not config.get('command'):
+            return False, "Script path is required"
+        if not os.path.exists(config['command']):
+            return False, f"Script not found: {config['command']}"
+        return True, ""
+    
+    def _prepare_environment(self, config: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        """Prepare environment variables for the process"""
+        custom_env = config.get('environment', {})
+        if not custom_env:
+            return None
+        
+        env = os.environ.copy()
+        for key, value in custom_env.items():
+            if isinstance(value, str) and value.startswith('${') and value.endswith('}'):
+                env_var_name = value[2:-1]
+                env[key] = os.environ.get(env_var_name, '')
+            else:
+                env[key] = str(value)
+        
+        return env
+
+
+class ShellScriptServiceStrategy(ServiceStrategy):
+    """Strategy for running shell scripts (.sh) on macOS/Linux"""
+    
+    def start(self, config: Dict[str, Any]) -> Optional[subprocess.Popen]:
+        script_path = config.get('command', '')
+        if not os.path.exists(script_path):
+            return None
+        
+        workspace = config.get('workspace', '')
+        if not workspace:
+            workspace = os.path.dirname(script_path)
+        
+        args = config.get('args', [])
+        args_str = ' '.join([f'"{arg}"' if ' ' in arg else arg for arg in args])
+        
+        cmd = f'/bin/bash "{script_path}" {args_str}'.strip()
+        env = self._prepare_environment(config)
+        
+        try:
+            kwargs = {'cwd': workspace, 'shell': True, 'env': env}
+            if os.name == 'nt':
+                kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+            return subprocess.Popen(cmd, **kwargs)
+        except Exception as e:
+            print(f"Error starting shell script: {e}")
             return None
     
     def validate_config(self, config: Dict[str, Any]) -> Tuple[bool, str]:
@@ -211,7 +256,8 @@ class ServiceStrategyFactory:
     _strategies = {
         'executable': ExecutableServiceStrategy,
         'npm_script': NPMScriptServiceStrategy,
-        'powershell_script': PowerShellScriptServiceStrategy
+        'powershell_script': PowerShellScriptServiceStrategy,
+        'shell_script': ShellScriptServiceStrategy
     }
     
     @classmethod
@@ -233,6 +279,7 @@ class ServiceStrategyFactory:
         return {
             'executable': 'Executable (.exe)',
             'npm_script': 'NPM/PNPM Script',
-            'powershell_script': 'PowerShell Script (.ps1)'
+            'powershell_script': 'Shell Script (.ps1/.sh)',
+            'shell_script': 'Shell Script (.ps1/.sh)'
         }
 

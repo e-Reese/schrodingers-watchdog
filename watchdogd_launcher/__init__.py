@@ -1,7 +1,6 @@
 """
-Watchdogd Development Environment Launcher
-A Python GUI application to manage services dynamically with automatic restart on crash.
+Watchdog launcher package for automating macOS application startup.
 """
 
-__version__ = "2.0.0"
-
+from .config_loader import AppConfig, load_app_config  # noqa: F401
+from .core import AppDefinition, AppStatus, WatchdogController  # noqa: F401

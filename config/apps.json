@@ -1,0 +1,19 @@
+{
+  "poll_interval_seconds": 5,
+  "applications": [
+    {
+      "name": "TextEdit",
+      "launch_target": "/System/Applications/TextEdit.app",
+      "process_match": "TextEdit",
+      "auto_start": true,
+      "args": []
+    },
+    {
+      "name": "Terminal",
+      "launch_target": "/System/Applications/Utilities/Terminal.app",
+      "process_match": "Terminal",
+      "auto_start": false,
+      "args": []
+    }
+  ]
+}

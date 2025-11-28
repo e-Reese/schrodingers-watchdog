@@ -25,6 +25,8 @@ dmypy.json
 # Virtual Environments
 env/
 venv/
+.venv/*
+.venv
 ENV/
 env.bak/
 venv.bak/

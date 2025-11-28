@@ -1,395 +1,164 @@
-"""Main window for Watchdogd Launcher (PyQt implementation)."""
-
 from __future__ import annotations
 
-import threading
-import time
-import webbrowser
-from typing import Dict
+from typing import List, Optional
 
-from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
-from ..config_manager import ConfigManager
-from ..service_manager import ServiceManager
-from ..utils.logger import Logger
-from ..utils.process_utils import kill_processes_by_name
-from .settings_dialog import SettingsDialog
+from ..config_loader import AppConfig
+from ..core import AppDefinition, AppStatus, WatchdogController
 
 
-class LogEmitter(QtCore.QObject):
-    """Thread-safe bridge for log messages coming from background threads."""
+STATUS_COLORS = {
+    AppStatus.RUNNING: QColor(46, 125, 50),  # green
+    AppStatus.STOPPED: QColor(211, 47, 47),  # red
+    AppStatus.STARTING: QColor(255, 179, 0),  # amber
+    AppStatus.STOPPING: QColor(255, 179, 0),
+    AppStatus.UNKNOWN: QColor(120, 120, 120),
+    AppStatus.ERROR: QColor(198, 40, 40),
+}
 
-    message = QtCore.pyqtSignal(str)
 
-
-class MainWindow(QtWidgets.QMainWindow):
-    """Main GUI window for Watchdogd Launcher using PyQt widgets."""
-
-    STATUS_RUNNING_COLOR = QtGui.QColor("#7ad77a")
-    STATUS_ERROR_COLOR = QtGui.QColor("#ff6b6b")
-    STATUS_STOPPED_COLOR = QtGui.QColor("#b1b1b1")
-
-    def __init__(self, config_manager: ConfigManager):
+class MainWindow(QMainWindow):
+    def __init__(self, controller: WatchdogController, config: AppConfig) -> None:
         super().__init__()
-        self.config_manager = config_manager
-        self.setWindowTitle("Watchdogd Development Environment Launcher")
-        self.resize(980, 760)
+        self.controller = controller
+        self.config = config
+        self.setWindowTitle("Watchdogd Launcher")
+        self.resize(900, 500)
 
-        self.services: Dict[str, ServiceManager] = {}
-        self.status_items: Dict[str, QtWidgets.QTreeWidgetItem] = {}
-        self.all_running = False
+        self.table = QTableWidget(self)
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["Application", "Status", "Auto Start", "Target"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
 
-        self.log_emitter = LogEmitter(self)
-        self.log_emitter.message.connect(self._log_to_gui)
-
-        self.logger = Logger(
-            log_dir=config_manager.get_log_dir(),
-            callback=self.log_emitter.message.emit,
-        )
-
-        self._create_menu()
-        self._build_ui()
-
-        self.logger.info("Watchdogd Launcher initialized. Ready to start services.")
-
-    # ------------------------------------------------------------------
-    # UI creation
-    # ------------------------------------------------------------------
-    def _create_menu(self) -> None:
-        """Create the application menu bar."""
-        menubar = self.menuBar()
-
-        file_menu = menubar.addMenu("File")
-        manage_action = QtGui.QAction("Manage Services...", self)
-        manage_action.triggered.connect(self._open_service_manager)
-        file_menu.addAction(manage_action)
-        file_menu.addSeparator()
-        exit_action = QtGui.QAction("Exit", self)
-        exit_action.triggered.connect(self.close)
-        file_menu.addAction(exit_action)
-
-        help_menu = menubar.addMenu("Help")
-        about_action = QtGui.QAction("About", self)
-        about_action.triggered.connect(self._show_about)
-        help_menu.addAction(about_action)
-
-    def _build_ui(self) -> None:
-        """Construct the main layout."""
-        central = QtWidgets.QWidget(self)
-        self.setCentralWidget(central)
-        layout = QtWidgets.QVBoxLayout(central)
-        layout.setSpacing(12)
-
-        title_label = QtWidgets.QLabel("Watchdogd Development Environment")
-        title_label.setObjectName("titleLabel")
-        title_font = QtGui.QFont()
-        title_font.setPointSize(16)
-        title_font.setBold(True)
-        title_label.setFont(title_font)
-        title_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-
-        header_layout = QtWidgets.QHBoxLayout()
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        layout.addLayout(header_layout)
-        header_layout.addStretch()
-        header_layout.addWidget(title_label, stretch=1)
-
-        self.auto_start_checkbox = QtWidgets.QCheckBox("Start services on launch")
-        self.auto_start_checkbox.setToolTip(
-            "Automatically start all enabled services when Watchdogd Launcher opens."
-        )
-        self.auto_start_checkbox.setChecked(
-            self.config_manager.get_app_setting("auto_start_services", False)
-        )
-        self.auto_start_checkbox.toggled.connect(self._toggle_auto_start_services)
-        header_layout.addWidget(
-            self.auto_start_checkbox,
-            alignment=QtCore.Qt.AlignmentFlag.AlignRight
-            | QtCore.Qt.AlignmentFlag.AlignTop,
-        )
-
-        # Control buttons
-        control_box = QtWidgets.QGroupBox("Controls")
-        control_layout = QtWidgets.QHBoxLayout(control_box)
-        control_layout.setSpacing(10)
-        layout.addWidget(control_box)
-
-        self.start_button = QtWidgets.QPushButton("Start All Services")
-        self.start_button.clicked.connect(self.start_all)
-        control_layout.addWidget(self.start_button)
-
-        self.stop_button = QtWidgets.QPushButton("Stop All Services")
-        self.stop_button.setEnabled(False)
-        self.stop_button.clicked.connect(self.stop_all)
-        control_layout.addWidget(self.stop_button)
-
-        open_browser_button = QtWidgets.QPushButton("Open Browser")
-        open_browser_button.clicked.connect(self.open_browser)
-        control_layout.addWidget(open_browser_button)
-
-        manage_button = QtWidgets.QPushButton("Manage Services")
-        manage_button.clicked.connect(self._open_service_manager)
-        control_layout.addWidget(manage_button)
-
-        control_layout.addStretch()
-
-        self.auto_open_checkbox = QtWidgets.QCheckBox("Auto-open browser on start")
-        self.auto_open_checkbox.setChecked(
-            self.config_manager.get_app_setting("auto_open_browser", False)
-        )
-        self.auto_open_checkbox.stateChanged.connect(self._toggle_auto_open_browser)
-        control_layout.addWidget(self.auto_open_checkbox)
-
-        # Status area
-        status_group = QtWidgets.QGroupBox("Service Status")
-        status_layout = QtWidgets.QVBoxLayout(status_group)
-        layout.addWidget(status_group)
-
-        self.status_tree = QtWidgets.QTreeWidget()
-        self.status_tree.setColumnCount(2)
-        self.status_tree.setHeaderLabels(["Service", "Status"])
-        self.status_tree.setAlternatingRowColors(True)
-        self.status_tree.setRootIsDecorated(False)
-        self.status_tree.header().setStretchLastSection(True)
-        self.status_tree.header().setSectionResizeMode(
-            0, QtWidgets.QHeaderView.ResizeMode.Stretch
-        )
-        self.status_tree.header().setSectionResizeMode(
-            1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
-        )
-        status_layout.addWidget(self.status_tree)
-
-        # Log section
-        log_group = QtWidgets.QGroupBox("Activity Log")
-        log_layout = QtWidgets.QVBoxLayout(log_group)
-        layout.addWidget(log_group, stretch=1)
-
-        self.log_view = QtWidgets.QPlainTextEdit()
+        self.log_view = QTextEdit(self)
         self.log_view.setReadOnly(True)
-        self.log_view.setMaximumBlockCount(5000)
-        log_layout.addWidget(self.log_view, stretch=1)
 
-        clear_button = QtWidgets.QPushButton("Clear Log")
-        clear_button.clicked.connect(self.clear_log)
-        log_layout.addWidget(clear_button, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
+        self.start_button = QPushButton("Start Selected")
+        self.stop_button = QPushButton("Stop Selected")
+        self.refresh_button = QPushButton("Refresh Status")
 
-        self._refresh_status_display()
-        if self.auto_start_checkbox.isChecked():
-            QtCore.QTimer.singleShot(0, self._auto_start_on_launch)
+        self.start_button.clicked.connect(self._start_selected)
+        self.stop_button.clicked.connect(self._stop_selected)
+        self.refresh_button.clicked.connect(self.controller.refresh_status)
 
-    # ------------------------------------------------------------------
-    # Logging helpers
-    # ------------------------------------------------------------------
-    @QtCore.pyqtSlot(str)
-    def _log_to_gui(self, message: str) -> None:
-        """Append a log message to the log view."""
-        self.log_view.appendPlainText(message)
-        self.log_view.verticalScrollBar().setValue(
-            self.log_view.verticalScrollBar().maximum()
-        )
+        button_row = QHBoxLayout()
+        button_row.addWidget(QLabel("Actions:"))
+        button_row.addWidget(self.start_button)
+        button_row.addWidget(self.stop_button)
+        button_row.addWidget(self.refresh_button)
+        button_row.addStretch()
 
-    def clear_log(self) -> None:
-        """Clear the log widget."""
-        self.log_view.clear()
+        layout = QVBoxLayout()
+        layout.addLayout(button_row)
+        layout.addWidget(self.table)
+        layout.addWidget(QLabel("Activity Log:"))
+        layout.addWidget(self.log_view)
 
-    # ------------------------------------------------------------------
-    # Status management
-    # ------------------------------------------------------------------
-    def _refresh_status_display(self) -> None:
-        """Populate the status tree from configuration."""
-        self.status_tree.clear()
-        self.status_items.clear()
+        container = QWidget(self)
+        container.setLayout(layout)
+        self.setCentralWidget(container)
 
-        services = self.config_manager.get_services()
-        if not services:
-            empty_item = QtWidgets.QTreeWidgetItem(
-                ["No services configured", "Use 'Manage Services' to add services"]
-            )
-            empty_item.setFirstColumnSpanned(True)
-            font = empty_item.font(0)
-            font.setItalic(True)
-            empty_item.setFont(0, font)
-            empty_item.setForeground(0, QtGui.QBrush(QtGui.QColor("#888888")))
-            self.status_tree.addTopLevelItem(empty_item)
+        self.controller.status_changed.connect(self._handle_status_change)
+        self.controller.log_event.connect(self._append_log)
+
+        self._populate_table()
+        self._setup_timer()
+
+        # Run initial status refresh and auto starts.
+        self.controller.refresh_status()
+        self.controller.start_autorun_apps()
+
+    def _setup_timer(self) -> None:
+        self.timer = QTimer(self)
+        self.timer.setInterval(int(self.config.poll_interval * 1000))
+        self.timer.timeout.connect(self.controller.refresh_status)
+        self.timer.start()
+
+    def _populate_table(self) -> None:
+        apps = list(self.controller.iter_apps())
+        self.table.setRowCount(len(apps))
+        for row, app in enumerate(apps):
+            self._render_row(row, app, self.controller.get_status(app.name))
+
+    def _render_row(self, row: int, app: AppDefinition, status: AppStatus) -> None:
+        name_item = QTableWidgetItem(app.name)
+        name_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+        self.table.setItem(row, 0, name_item)
+
+        status_item = QTableWidgetItem(status.value)
+        status_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+        self._apply_status_color(status_item, status)
+        self.table.setItem(row, 1, status_item)
+
+        auto_item = QTableWidgetItem("Yes" if app.auto_start else "No")
+        auto_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        auto_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+        self.table.setItem(row, 2, auto_item)
+
+        target_item = QTableWidgetItem(app.launch_target)
+        target_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+        self.table.setItem(row, 3, target_item)
+
+    def _apply_status_color(self, item: QTableWidgetItem, status: AppStatus) -> None:
+        color = STATUS_COLORS.get(status)
+        if color:
+            item.setForeground(color)
+
+    def _append_log(self, message: str) -> None:
+        self.log_view.append(message)
+
+    def _handle_status_change(self, name: str, status: AppStatus) -> None:
+        row = self._find_row(name)
+        if row is None:
             return
+        status_item = self.table.item(row, 1)
+        if not status_item:
+            status_item = QTableWidgetItem()
+            status_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+            self.table.setItem(row, 1, status_item)
+        status_item.setText(status.value)
+        self._apply_status_color(status_item, status)
 
-        for service_config in services:
-            service_name = service_config.get("name", "Unnamed Service")
-            enabled = service_config.get("enabled", True)
-            status_text = "Disabled" if not enabled else "Stopped"
-            status_item = QtWidgets.QTreeWidgetItem([service_name, status_text])
-            status_item.setData(0, QtCore.Qt.ItemDataRole.UserRole, service_name)
-            status_item.setForeground(
-                1, QtGui.QBrush(self.STATUS_STOPPED_COLOR)
-            )
-            self.status_tree.addTopLevelItem(status_item)
-            self.status_items[service_name] = status_item
+    def _selected_names(self) -> List[str]:
+        rows = {index.row() for index in self.table.selectionModel().selectedRows()}
+        names = []
+        for row in rows:
+            item = self.table.item(row, 0)
+            if item:
+                names.append(item.text())
+        return names
 
-    def update_status(self, service_name: str, status: str, color: QtGui.QColor) -> None:
-        """Update the status text and color for a service."""
-        item = self.status_items.get(service_name)
-        if not item:
-            return
-        item.setText(1, status)
-        item.setForeground(1, QtGui.QBrush(color))
+    def _start_selected(self) -> None:
+        for name in self._selected_names():
+            self.controller.start_app(name)
 
-    # ------------------------------------------------------------------
-    # Actions
-    # ------------------------------------------------------------------
-    def _toggle_auto_open_browser(self) -> None:
-        new_value = self.auto_open_checkbox.isChecked()
-        self.config_manager.set_app_setting("auto_open_browser", new_value)
-        status = "enabled" if new_value else "disabled"
-        self.logger.info(f"Auto-open browser {status}")
+    def _stop_selected(self) -> None:
+        for name in self._selected_names():
+            self.controller.stop_app(name)
 
-    def _toggle_auto_start_services(self, checked: bool) -> None:
-        self.config_manager.set_app_setting("auto_start_services", checked)
-        status = "enabled" if checked else "disabled"
-        self.logger.info(f"Auto-start services on launch {status}")
-
-    def start_all(self) -> None:
-        if self.all_running:
-            QtWidgets.QMessageBox.information(
-                self, "Already Running", "Services are already running."
-            )
-            return
-
-        services = self.config_manager.get_services()
-        enabled_services = [s for s in services if s.get("enabled", True)]
-        if not enabled_services:
-            QtWidgets.QMessageBox.warning(
-                self,
-                "No Services",
-                "No enabled services configured. Use 'Manage Services' to add services.",
-            )
-            return
-
-        self.logger.info("=== Starting all enabled services ===")
-        self.start_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
-        self.all_running = True
-
-        self._cleanup_existing_processes()
-
-        crash_log_path = self.config_manager.get_crash_log_file()
-        for service_config in enabled_services:
-            service_name = service_config.get("name", "Unknown")
-            try:
-                manager = ServiceManager(
-                    service_config,
-                    self.logger.log,
-                    crash_log_path,
-                )
-                self.services[service_name] = manager
-                manager.start()
-                self.update_status(service_name, "Running", self.STATUS_RUNNING_COLOR)
-            except ValueError as exc:
-                self.logger.error(f"Failed to start {service_name}: {exc}")
-                self.update_status(service_name, "Error", self.STATUS_ERROR_COLOR)
-
-        if self.auto_open_checkbox.isChecked():
-            delay = self.config_manager.get_app_setting("browser_delay", 8)
-            threading.Thread(
-                target=self._delayed_browser_open, args=(delay,), daemon=True
-            ).start()
-
-    def stop_all(self) -> None:
-        if not self.all_running:
-            return
-        self.logger.info("=== Stopping all services ===")
-        self.stop_button.setEnabled(False)
-        for name, service in self.services.items():
-            service.stop()
-            self.update_status(name, "Stopped", self.STATUS_STOPPED_COLOR)
-            self.logger.info(f"[{name}] Service stopped")
-        self.services.clear()
-        self.all_running = False
-        self.start_button.setEnabled(True)
-        self.logger.info("=== All services stopped ===")
-
-    def open_browser(self) -> None:
-        url = self.config_manager.get_app_setting("frontend_url", "http://localhost:3000/")
-        try:
-            webbrowser.open(url)
-            self.logger.info(f"Opening browser: {url}")
-        except Exception as exc:
-            self.logger.error(f"Failed to open browser: {exc}")
-            QtWidgets.QMessageBox.critical(
-                self, "Browser Error", f"Failed to open browser:\n{exc}"
-            )
-
-    def _delayed_browser_open(self, delay: int) -> None:
-        time.sleep(delay)
-        self.open_browser()
-
-    def _auto_start_on_launch(self) -> None:
-        if not self.all_running and self.auto_start_checkbox.isChecked():
-            self.logger.info("Auto-start setting enabled; starting services.")
-            self.start_all()
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-    def _cleanup_existing_processes(self) -> None:
-        self.logger.info("Cleaning up existing processes...")
-        import os
-        if os.name == 'nt':
-            processes_to_kill = ["Watchdogd.exe", "node.exe", "pnpm.exe"]
-        else:
-            processes_to_kill = ["Watchdogd", "node", "pnpm"]
-        killed = kill_processes_by_name(processes_to_kill)
-        if killed > 0:
-            self.logger.info(f"Killed {killed} existing process(es)")
-            time.sleep(2)
-        self.logger.info("Cleanup complete")
-
-    def _open_service_manager(self) -> None:
-        if self.all_running:
-            result = QtWidgets.QMessageBox.question(
-                self,
-                "Services Running",
-                "Services are currently running. "
-                "You should stop them before making changes. Continue anyway?",
-                QtWidgets.QMessageBox.StandardButton.Yes
-                | QtWidgets.QMessageBox.StandardButton.No,
-            )
-            if result != QtWidgets.QMessageBox.StandardButton.Yes:
-                return
-
-        dialog = SettingsDialog(self, self.config_manager)
-        dialog.exec()
-        self._refresh_status_display()
-
-    def _show_about(self) -> None:
-        QtWidgets.QMessageBox.information(
-            self,
-            "About Watchdogd Launcher",
-            (
-                "Watchdogd Development Environment Launcher\n"
-                "Version 2.0.0\n\n"
-                "A dynamic service management tool with automatic restart capabilities.\n\n"
-                "Features:\n"
-                "- Configurable services\n"
-                "- Auto-restart on crash\n"
-                "- Crash logging\n"
-                "- Multiple service types (Executable, NPM, PowerShell)"
-            ),
-        )
-
-    # ------------------------------------------------------------------
-    # Qt events
-    # ------------------------------------------------------------------
-    def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # type: ignore[override]
-        if self.all_running:
-            result = QtWidgets.QMessageBox.question(
-                self,
-                "Services Running",
-                "Services are still running. Stop them and exit?",
-                QtWidgets.QMessageBox.StandardButton.Yes
-                | QtWidgets.QMessageBox.StandardButton.No,
-            )
-            if result != QtWidgets.QMessageBox.StandardButton.Yes:
-                event.ignore()
-                return
-            self.stop_all()
-        event.accept()
+    def _find_row(self, app_name: str) -> Optional[int]:
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item and item.text() == app_name:
+                return row
+        return None

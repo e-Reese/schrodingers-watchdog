@@ -1,28 +1,40 @@
-"""Main entry point for Watchdogd Launcher application (PyQt)."""
-
 from __future__ import annotations
 
+import argparse
 import sys
+from pathlib import Path
 
-from PyQt6 import QtWidgets
+from PyQt6.QtWidgets import QApplication
 
-from .config_manager import ConfigManager
+from .config_loader import load_app_config
+from .core import WatchdogController
 from .gui.main_window import MainWindow
-from .gui.theme import apply_dark_theme
 
 
-def main() -> None:
-    """Start the PyQt application."""
-    app = QtWidgets.QApplication(sys.argv)
-    apply_dark_theme(app)
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Launch and monitor macOS applications via a PyQt watchdog.",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to the JSON config that defines managed applications.",
+    )
+    return parser
 
-    config_manager = ConfigManager()
-    window = MainWindow(config_manager)
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    config = load_app_config(path=args.config)
+    qt_app = QApplication(sys.argv)
+
+    controller = WatchdogController(config.apps, poll_interval=config.poll_interval)
+    window = MainWindow(controller, config)
     window.show()
 
-    sys.exit(app.exec())
+    return qt_app.exec()
 
 
 if __name__ == "__main__":
-    main()
-
+    raise SystemExit(main())

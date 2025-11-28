@@ -1,74 +1,44 @@
-# Watchdogd Development Environment Launcher v2.0
-Automate live-install bootstraps, keep development environments ready, or standardize enterprise terminals with a repeatable service stack. This GUI orchestrates services, monitors health, and automatically restarts crashed services.
+## Schrodinger's Watchdog
 
-Cross-platform support for Windows and macOS.
+PyQt-based watchdog UI that automates starting and supervising long-lived macOS applications. Designed to streamline preparing production machines by ensuring required apps launch (and stay running) with minimal interaction.
 
-## Features
-- Add/edit/remove services at runtime
-- Support executable, npm/pnpm, and shell script targets
-- Auto-restart with crash logging
-- Startup ordering and delays
-- JSON configuration stored per user
-- Optional browser auto-launch
-- Cross-platform: Windows and macOS
+### Features
+- JSON-driven application list with launch target, auto-start flag, and optional arguments.
+- PyQt UI that displays current status, activity logs, and manual start/stop controls.
+- Periodic health checks via `pgrep` plus graceful shutdown via AppleScript fallbacks.
 
-## Install & Run
+### Requirements
+- macOS with Python 3.11+ (earlier versions likely work but are untested).
+- PyQt6 installed (`pip install PyQt6`).
 
-### Quick Start (Recommended)
-**Windows:**
-```powershell
-.\start.ps1
+### Configuration
+Edit `config/apps.json` to add the bundle you want to manage:
+
+```json
+{
+  "poll_interval_seconds": 10,
+  "applications": [
+    {
+      "name": "OBS Studio",
+      "launch_target": "/Applications/OBS.app",
+      "process_match": "OBS",
+      "auto_start": true,
+      "args": ["--multi"]
+    }
+  ]
+}
 ```
 
-**macOS/Linux:**
+- `launch_target`: absolute path to the `.app` bundle or any value accepted by `open -a`. For bundle identifiers, prefix with `bundle:` (e.g., `"bundle:com.apple.Safari"`).
+- `process_match`: substring passed to `pgrep -if` when determining whether the app is running.
+- `auto_start`: start automatically when the UI launches.
+- `args`: optional list appended after `open --args`.
+
+### Running
+
 ```bash
-./start.sh
+pip install PyQt6
+python -m watchdogd_launcher.main --config config/apps.json
 ```
 
-These scripts automatically create a virtual environment, install dependencies, and launch the application.
-
-### Manual Installation
-```bash
-pip install -r requirements.txt
-python watchdogd-launcher.py
-```
-
-## Build (PyInstaller)
-```bash
-pyinstaller watchdogd-launcher.spec
-```
-
-**Output:**
-- Windows: `dist/Watchdogd-Launcher.exe`
-- macOS: `dist/Watchdogd-Launcher.app`
-## Configuration
-**Windows:**
-- User config: `%USERPROFILE%\.watchdogd_launcher\config.json`
-- Logs: `%USERPROFILE%\.watchdogd_launcher\logs\`
-
-**macOS/Linux:**
-- User config: `~/.watchdogd_launcher/config.json`
-- Logs: `~/.watchdogd_launcher/logs/`
-
-Example config and notes: `config/`
-
-## Managing Services
-Use **Manage Services** to add, edit, duplicate, reorder, toggle, and save services. Each service supports command, workspace, args, startup delay, restart policy, custom environment variables (`${VAR_NAME}` syntax), and optional browser profile isolation.
-
-## Structure
-```
-watchdogd_launcher/
-├── main.py
-├── config_manager.py
-├── service_manager.py
-├── service_definitions.py
-├── gui/
-│   ├── main_window.py
-│   ├── settings_dialog.py
-│   └── service_editor.py
-└── utils/
-    ├── logger.py
-    └── process_utils.py
-```
-## License
-GPL-2.0-only
+The UI will present the managed app list, start auto-run entries, and monitor them at the configured interval. Use the buttons to manually start/stop any entry as needed.

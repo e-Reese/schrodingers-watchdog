@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, Optional
 
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -69,9 +70,11 @@ class ServiceEditorDialog(QtWidgets.QDialog):
         self.form_layout.addRow(self._bold_label("Workspace Directory:"), workspace_layout)
 
         # Command
-        self.command_hint = self._hint_label(
-            "(For executables: .exe path, For NPM: command like 'pnpm dev')"
-        )
+        if os.name == 'nt':
+            cmd_hint = "(For executables: .exe path, For NPM: command like 'pnpm dev')"
+        else:
+            cmd_hint = "(For executables: path to executable, For NPM: command like 'pnpm dev')"
+        self.command_hint = self._hint_label(cmd_hint)
         self.command_edit, self.command_browse_btn = self._browse_row(
             self._browse_command, placeholder="Command or path"
         )
@@ -116,11 +119,11 @@ class ServiceEditorDialog(QtWidgets.QDialog):
         )
         profile_layout = QtWidgets.QVBoxLayout()
         profile_layout.addLayout(self._row_layout(self.profile_dir_edit, profile_btn))
-        profile_layout.addWidget(
-            self._hint_label(
-                "(Leave blank to use %USERPROFILE%/.watchdogd_launcher/profiles/<service-name>)"
-            )
-        )
+        if os.name == 'nt':
+            profile_hint = "(Leave blank to use %USERPROFILE%/.watchdogd_launcher/profiles/<service-name>)"
+        else:
+            profile_hint = "(Leave blank to use ~/.watchdogd_launcher/profiles/<service-name>)"
+        profile_layout.addWidget(self._hint_label(profile_hint))
         self.form_layout.addRow(self._bold_label("Profile Storage Directory:"), profile_layout)
 
         # Startup delay
@@ -183,7 +186,7 @@ class ServiceEditorDialog(QtWidgets.QDialog):
         config = self.service_config
         self.name_edit.setText(config.get("name", ""))
         service_type = config.get("type", "executable")
-        display_name = self.type_display.get(service_type, "Executable (.exe)")
+        display_name = self.type_display.get(service_type, "Executable")
         index = self.type_combo.findText(display_name)
         if index >= 0:
             self.type_combo.setCurrentIndex(index)
@@ -218,9 +221,16 @@ class ServiceEditorDialog(QtWidgets.QDialog):
             self.workspace_hint.setText("(Optional, defaults to script directory)")
             self.command_hint.setText("(Path to .ps1 script file)")
             self.command_browse_btn.setEnabled(True)
-        else:
+        elif internal_type == "shell_script":
+            self.workspace_hint.setText("(Optional, defaults to script directory)")
+            self.command_hint.setText("(Path to .sh script file)")
+            self.command_browse_btn.setEnabled(True)
+        else:  # executable
             self.workspace_hint.setText("(Not used for executables)")
-            self.command_hint.setText("(Path to .exe executable file)")
+            if os.name == 'nt':
+                self.command_hint.setText("(Path to .exe executable file)")
+            else:
+                self.command_hint.setText("(Path to .app bundle, executable inside .app, or Unix executable)")
             self.command_browse_btn.setEnabled(True)
 
     # ------------------------------------------------------------------
@@ -243,9 +253,17 @@ class ServiceEditorDialog(QtWidgets.QDialog):
         internal_type = self.display_to_type.get(display_value, "executable")
 
         if internal_type == "executable":
-            file_filter = "Executables (*.exe);;All Files (*.*)"
-        else:  # powershell_script
+            if os.name == 'nt':
+                file_filter = "Executables (*.exe);;All Files (*.*)"
+            else:
+                # On Unix systems, allow all files (executables don't have extensions)
+                file_filter = "All Files (*)"
+        elif internal_type == "powershell_script":
             file_filter = "PowerShell Scripts (*.ps1);;All Files (*.*)"
+        elif internal_type == "shell_script":
+            file_filter = "Shell Scripts (*.sh);;All Files (*.*)"
+        else:
+            file_filter = "All Files (*.*)"
 
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,

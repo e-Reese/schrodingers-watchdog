@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 import subprocess
 import os
+import plistlib
 import re
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
@@ -35,8 +36,29 @@ class ExecutableServiceStrategy(ServiceStrategy):
         if profile_args:
             args = profile_args + args
         
-        cmd = [command_path] + args
         env = self._prepare_environment(config)
+        
+        # On macOS, handle .app bundles
+        if os.name != 'nt' and command_path.endswith('.app'):
+            # If we have profile args or need to track child processes, 
+            # launch the executable directly from inside the .app bundle
+            # for better control and process tracking
+            if profile_args or config.get('track_child_processes', False):
+                executable_path = self._find_executable_in_app_bundle(command_path)
+                if executable_path:
+                    cmd = [executable_path] + args
+                else:
+                    # Fallback to open command if we can't find the executable
+                    cmd = ['open', '-a', command_path]
+                    if args:
+                        cmd.extend(['--args'] + args)
+            else:
+                # Use open command for simpler cases
+                cmd = ['open', '-a', command_path]
+                if args:
+                    cmd.extend(['--args'] + args)
+        else:
+            cmd = [command_path] + args
         
         try:
             return subprocess.Popen(cmd, env=env)
@@ -47,8 +69,22 @@ class ExecutableServiceStrategy(ServiceStrategy):
     def validate_config(self, config: Dict[str, Any]) -> Tuple[bool, str]:
         if not config.get('command'):
             return False, "Executable path is required"
-        if not os.path.exists(config['command']):
-            return False, f"Executable not found: {config['command']}"
+        command_path = config['command']
+        if not os.path.exists(command_path):
+            return False, f"Executable not found: {command_path}"
+        
+        # On Unix systems, check if file is executable (but skip check for .app bundles)
+        if os.name != 'nt' and not command_path.endswith('.app'):
+            if os.path.isdir(command_path):
+                return False, f"Path is a directory, not an executable: {command_path}"
+            if not os.access(command_path, os.X_OK):
+                return False, f"File is not executable: {command_path}. Run: chmod +x {command_path}"
+        
+        # For .app bundles on macOS, verify it's a directory
+        if os.name != 'nt' and command_path.endswith('.app'):
+            if not os.path.isdir(command_path):
+                return False, f"Invalid .app bundle: {command_path}"
+        
         return True, ""
     
     def _prepare_environment(self, config: Dict[str, Any]) -> Optional[Dict[str, str]]:
@@ -97,6 +133,31 @@ class ExecutableServiceStrategy(ServiceStrategy):
         profile_str = str(profile_path)
         config['_isolated_profile_path'] = profile_str
         return [f"--user-data-dir={profile_str}"]
+    
+    def _find_executable_in_app_bundle(self, app_path: str) -> Optional[str]:
+        """Find the actual executable inside a macOS .app bundle."""
+        try:
+            # Read Info.plist to get the executable name
+            info_plist_path = Path(app_path) / 'Contents' / 'Info.plist'
+            if info_plist_path.exists():
+                with open(info_plist_path, 'rb') as f:
+                    plist_data = plistlib.load(f)
+                    executable_name = plist_data.get('CFBundleExecutable')
+                    if executable_name:
+                        executable_path = Path(app_path) / 'Contents' / 'MacOS' / executable_name
+                        if executable_path.exists():
+                            return str(executable_path)
+            
+            # Fallback: try to find any executable in Contents/MacOS/
+            macos_dir = Path(app_path) / 'Contents' / 'MacOS'
+            if macos_dir.exists():
+                for item in macos_dir.iterdir():
+                    if item.is_file() and os.access(str(item), os.X_OK):
+                        return str(item)
+        except Exception as e:
+            print(f"Error finding executable in .app bundle: {e}")
+        
+        return None
 
 
 class NPMScriptServiceStrategy(ServiceStrategy):
@@ -277,9 +338,9 @@ class ServiceStrategyFactory:
     def get_type_display_names(cls) -> Dict[str, str]:
         """Get human-readable names for service types"""
         return {
-            'executable': 'Executable (.exe)',
+            'executable': 'Executable',
             'npm_script': 'NPM/PNPM Script',
-            'powershell_script': 'Shell Script (.ps1/.sh)',
-            'shell_script': 'Shell Script (.ps1/.sh)'
+            'powershell_script': 'PowerShell Script (.ps1)',
+            'shell_script': 'Shell Script (.sh)'
         }
 

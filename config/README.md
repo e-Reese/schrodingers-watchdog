@@ -21,9 +21,19 @@ The launcher supports four types of services:
 ### 1. Executable
 Run standalone executable files
 - **type**: `executable`
-- **command**: Full path to executable file (.exe on Windows, app on macOS)
+- **command**: Full path to executable file
+  - **Windows**: `.exe` files (e.g., `C:\Program Files\App\app.exe`)
+  - **macOS**: 
+    - `.app` bundles (e.g., `/Applications/Visual Studio Code.app`)
+    - Direct executables inside .app (e.g., `/Applications/Visual Studio Code.app/Contents/MacOS/Electron`)
+    - Unix executables (no extension, e.g., `/usr/local/bin/myapp`)
+  - **Linux**: Unix executables (no extension)
 - **args**: Array of command-line arguments
 - **workspace**: Not used (leave empty)
+- **Important for macOS**: 
+  - .app bundles with isolated profiles or child process tracking are launched directly via their internal executable for better control
+  - .app bundles without these features use the `open` command for standard macOS behavior
+  - Unix executables must have execute permissions. Run `chmod +x /path/to/file` if needed.
 
 ### 2. NPM Script
 Run npm, pnpm, or yarn commands
@@ -32,21 +42,24 @@ Run npm, pnpm, or yarn commands
 - **args**: Not used (include in command string)
 - **workspace**: Path to project directory
 
-### 3. PowerShell Script (Windows)
-Run PowerShell .ps1 scripts
+### 3. PowerShell Script
+Run PowerShell .ps1 scripts (Windows only)
 - **type**: `powershell_script`
 - **command**: Full path to .ps1 file
 - **args**: Array of script arguments
 - **workspace**: Working directory for script (optional, defaults to script directory)
-- **Note**: Windows only
+- **Platform**: Windows only
+- **Example**: `C:\Scripts\setup.ps1`
 
-### 4. Shell Script (macOS/Linux)
-Run bash/shell .sh scripts
+### 4. Shell Script
+Run bash/shell .sh scripts (macOS/Linux only)
 - **type**: `shell_script`
 - **command**: Full path to .sh file
 - **args**: Array of script arguments
 - **workspace**: Working directory for script (optional, defaults to script directory)
-- **Note**: macOS/Linux only
+- **Platform**: macOS/Linux only
+- **Example**: `/home/user/scripts/setup.sh`
+- **Note**: Script does not need execute permissions (runs via bash interpreter)
 
 ## Optional Browser Launching
 
@@ -70,7 +83,28 @@ To use browser launching:
 }
 ```
 
-**macOS Example:**
+**macOS Example (using .app bundle):**
+```json
+{
+  "name": "Visual Studio Code",
+  "type": "executable",
+  "enabled": true,
+  "command": "/Applications/Visual Studio Code.app",
+  "args": ["."],
+  "startup_delay": 0,
+  "track_child_processes": true,
+  "use_unique_profile": true,
+  "min_uptime_for_crash": 0
+}
+```
+
+This configuration will:
+- Launch VS Code directly from its internal executable (not via `open`)
+- Track all child processes spawned by VS Code
+- Use an isolated profile in `~/.watchdogd_launcher/profiles/visual-studio-code`
+- Not treat quick exits as crashes (VS Code may redirect to existing instances)
+
+**macOS Example (using direct executable):**
 ```json
 {
   "name": "Chrome Browser",
@@ -79,6 +113,18 @@ To use browser launching:
   "command": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "args": ["--new-window", "http://localhost:3000"],
   "startup_delay": 10
+}
+```
+
+**Unix Executable Example:**
+```json
+{
+  "name": "Custom Server",
+  "type": "executable",
+  "enabled": true,
+  "command": "/usr/local/bin/myserver",
+  "args": ["--port", "8080"],
+  "startup_delay": 0
 }
 ```
 
@@ -115,6 +161,9 @@ If a process exits within `min_uptime_for_crash` seconds with exit code 0, it's 
 ### Important: track_child_processes
 
 This setting enables tracking of child processes spawned by applications like browsers and editors.
+
+**macOS .app Bundle Behavior:**
+When using `.app` bundles with `track_child_processes` or `use_unique_profile` enabled, the launcher automatically finds and executes the actual binary inside the .app bundle (e.g., `/Applications/Visual Studio Code.app/Contents/MacOS/Electron`). This provides better control over arguments and ensures all child processes with the isolated profile are properly tracked.
 
 **How it works (Snapshot Mode):**
 1. Takes a BEFORE snapshot of all running processes before launching the service
